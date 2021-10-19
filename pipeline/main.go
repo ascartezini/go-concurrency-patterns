@@ -65,12 +65,6 @@ func writableStream(data <-chan string, file *os.File, done chan bool) <-chan st
 			file.WriteString(v)
 		}
 
-		err := file.Close()
-
-		if err != nil {
-			fmt.Println("file closed")
-		}
-
 		close(c)
 		done <- true
 	}()
@@ -112,6 +106,8 @@ func main() {
 	}
 
 	file, err := os.Create(path + "/data.csv")
+	defer file.Close()
+
 	rand.Seed(time.Now().UnixNano())
 	start := time.Now()
 
