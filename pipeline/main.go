@@ -6,6 +6,7 @@ import (
 	"math/rand"
 	"os"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -40,7 +41,6 @@ func transform(data <-chan string) <-chan string {
 	c := make(chan string)
 
 	go func() {
-
 		c <- "id,name\n"
 
 		for v := range data {
@@ -56,7 +56,9 @@ func transform(data <-chan string) <-chan string {
 	return c
 }
 
-func writableStream(data <-chan string, file *os.File, quit chan bool) {
+func writableStream(data <-chan string, file *os.File, done chan bool) <-chan string {
+
+	c := make(chan string)
 
 	go func() {
 		for v := range data {
@@ -69,8 +71,37 @@ func writableStream(data <-chan string, file *os.File, quit chan bool) {
 			fmt.Println("file closed")
 		}
 
-		quit <- true
+		close(c)
+		done <- true
 	}()
+
+	return c
+}
+
+func merge(cs ...<-chan string) <-chan string {
+	var wg sync.WaitGroup
+	out := make(chan string)
+
+	// Start an output goroutine for each input channel in cs.  output
+	// copies values from c to out until c is closed, then calls wg.Done.
+	output := func(c <-chan string) {
+		for n := range c {
+			out <- n
+		}
+		wg.Done()
+	}
+	wg.Add(len(cs))
+	for _, c := range cs {
+		go output(c)
+	}
+
+	// Start a goroutine to close out once all the output goroutines are
+	// done.  This must start after the wg.Add call.
+	go func() {
+		wg.Wait()
+		close(out)
+	}()
+	return out
 }
 
 func main() {
@@ -84,12 +115,14 @@ func main() {
 	rand.Seed(time.Now().UnixNano())
 	start := time.Now()
 
-	quit := make(chan bool)
+	done := make(chan bool)
 	c := readableStream()
-	t := transform(c)
-	writableStream(t, file, quit)
+	t1 := transform(c)
+	t2 := transform(c)
+	mergedTransform := merge(t1, t2)
+	writableStream(mergedTransform, file, done)
 
-	<-quit
+	<-done
 
 	elapsed := time.Since(start)
 	fmt.Println(elapsed)
