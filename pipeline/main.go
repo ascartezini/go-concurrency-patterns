@@ -56,20 +56,14 @@ func transform(data <-chan string) <-chan string {
 	return c
 }
 
-func writableStream(data <-chan string, file *os.File, done chan bool) <-chan string {
-
-	c := make(chan string)
+func writableStream(data <-chan string, file *os.File, done chan bool) {
 
 	go func() {
 		for v := range data {
 			file.WriteString(v)
 		}
-
-		close(c)
 		done <- true
 	}()
-
-	return c
 }
 
 func merge(cs ...<-chan string) <-chan string {
